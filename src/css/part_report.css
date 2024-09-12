@@ -314,3 +314,80 @@ table th {
     font-weight: bolder;
     color: rgb(121, 121, 121)
 }
+
+
+.speed_text {
+    background-color:#ededb0;
+    /* background-color:#ededb0; */
+}
+
+.speed_number {
+    color: #e7e246;
+}
+
+.pause_count_text {
+    background-color: #b7e0d4;
+}
+
+.brief_pause_text {
+    color: lightblue;
+}
+.master_pause_text {
+    color: mediumaquamarine;
+}
+.long_pause_text {
+    color: darkcyan;
+}
+
+
+.stress_label {
+    background-color: #edd7b0;
+}
+
+.stress_sentence {
+    color: #c99a4a;
+    /* background-color: #edd7b0; */
+    /* #eedbac */
+    /* font-weight: bold; */
+}
+
+.high_level_text {
+    background-color: #bce3c2;
+    /* font-style: italic; */
+}
+
+.medium_level_text {
+    /* background-color: #bddeee; */
+    /* font-style: italic; */
+}
+
+.low_level_text {
+    background-color: #ecbac9;
+    /* font-style: italic; */
+}
+
+.best_sentence {
+    color: #38a248;
+    /* color: #4cb15b; */
+}
+
+.worst_sentence {
+    color: #be4f70;
+}
+
+.bold_span {
+    font-weight: bold;
+    color: #484848;
+}
+
+
+
+.intonation_sign {
+    color: #4ba4fd;
+    background-color: rgb(109, 178, 247);
+    background-color: rgb(242, 196, 32);
+    background-color: rgb(171, 171, 186);
+}
+/* [75, 164, 253];
+    const RISE_COLOR = [0, 206, 209];
+    const FLAT_COLOR = [230, 230, 250]; */

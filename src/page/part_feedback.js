@@ -14,6 +14,8 @@ const EXTENT_SHORT_BAR = 15;
 const EXTENT_LONG_BAR = 30;
 const EXTENT_SHORT_PERCENT = 20; // 15;
 const EXTENT_LONG_PERCENT = 10; //8;
+const SEGMENT_RATE_FAST = 3.0;
+const SEGMENT_RATE_SLOW = 2.0;
 const SKIP_WORDS = ["the", "a", "an", "I", "this", "that"];
 
 const boundary = 70;
@@ -25,6 +27,8 @@ var pauses_type_list = [];
 var pitches_type_list = [];
 var extents_type_list = [];
 
+var pause_count = [0, 0, 0];
+
 
 // var pronunciation_score_list = [];
 // var fluency_score_list = [];
@@ -33,18 +37,35 @@ var extents_type_list = [];
 // var vocab_score_list = [];
 
 var score_lists = [];
+var speed_rate_average = 0;
+var speed_rate_sign = "unknown";
+
+var pitch_vary_sign = "unknown";
+var stress_sentence = "";
+
+var max_score_sentences = [];
+var min_score_sentences = [];
+var max_sentence_scores = [];
+var min_sentence_scores = [];
+var all_segment_results = [];
+
+
 const subscore_label_list = ["No Subscore", "Pronunciation", "Fluency", "Grammar", "Coherence", "Vocabulary"];
 const radar_label_list = ["Show Details", "Show Scores"]
 
-// const mColors = [[255, 255, 255, 0.0], 
-//     [215, 243, 218, 0.5], 
-//     [255, 235, 205, 0.5], 
-//     [0, 255, 255, 0.3],
-//     [255, 192, 203, 0.3],
-//     [127, 255, 212, 0.3]]
-const mColors = [[21,3,251], [42,72,235], [52,116,235], [24,149,255], [1,184,255], [94,196,244], [168,218,242], [255,253,177], [255,228,63], [255,189,15], [255,144,0], [255,89,0], [255,5,0], [214,0,0]];
-// [215, 241, 242, 0.5], [215, 243, 218, 0.5], [215, 241, 242, 0.5], [215, 243, 218, 0.5] ]
-// [218, 215, 242, 0.5], [243, 215, 240, 0.5], [244, 218, 217, 0.5]]
+const MIDDLE_COLOR = [200, 200, 200];
+const mColors = [
+        [190,79,112], [200,111,137], [209,143,162], [219,174,188], [228,206,213], 
+        [238,238,238],
+        [202,223,205], [165,208,172], [129,192,138], [92,177,105], [56,162,72]  
+    ];
+// pink-green: [
+//     [190,79,112], [200,111,137], [209,143,162], [219,174,188], [228,206,213], 
+//     [238,238,238],
+//     [202,223,205], [165,208,172], [129,192,138], [92,177,105], [56,162,72]  
+// ]; 
+// red-blue: [[21,3,251], [42,72,235], [52,116,235], [24,149,255], [1,184,255], [94,196,244], [168,218,242], [255,253,177], [255,228,63], [255,189,15], [255,144,0], [255,89,0], [255,5,0], [214,0,0]];
+
 
 function ScoreBar({ score , overall }) {
     const progressPercentage = (score / FULL_SCORE) * 100;
@@ -62,6 +83,221 @@ function ScoreBar({ score , overall }) {
         <button className="long_bar" style={{ height: `${mHeight}`, backgroundColor: `${mBgColor}`}}></button>
       </div>
     );
+}
+
+
+function VocabularyAspects({ mJson, mMaxSentences, mMinSentences, mMaxScores, mMinScores }) {
+    var high_list = [];
+    var medium_list = [];
+    var low_list = [];
+    console.log(mMaxSentences[4]);
+    console.log(mMinSentences[4]);
+
+    var max_color = [255, 255, 255];
+    var min_color = [255, 255, 255];
+    console.log(mMaxScores[4], mMinScores[4])
+    if (mMaxScores.length == 5 && mMinScores.length == 5) {
+        const max_color_idx = parseInt(mMaxScores[4]/100*mColors.length);
+        max_color = [...mColors[max_color_idx]];
+        if (max_color_idx == 5) {
+            max_color = MIDDLE_COLOR;
+        }
+        
+        const min_color_idx = parseInt(mMinScores[4]/100*mColors.length);
+        min_color = [...mColors[min_color_idx]];
+        if (min_color_idx == 5) {
+            min_color = MIDDLE_COLOR;
+        }
+    }
+
+    const get_appended_aspects = (mAspectList, mClassName) => {
+        if (mAspectList.length == 1) {
+            return <span>
+                <span className={mClassName}>{mAspectList[0]}</span>.
+            </span>;
+        }
+
+        else {
+            return <span>
+                {mAspectList.slice(0, mAspectList.length-1).map((aspect) => {
+                    return <span><span className={mClassName}>{aspect}</span>, </span>;
+                })} and <span className={mClassName}>{mAspectList[mAspectList.length-1]}</span>.
+            </span>;
+        }
+    }
+
+    if (mJson?.speech_score?.vocab?.overall_metrics) {
+        const vocab_metrics = mJson.speech_score.vocab.overall_metrics;
+        const vocab_item_names = ["lexical_diversity", "word_sophistication", "word_specificity", "academic_language_use", "collocation_commonality", "idiomaticity"];
+        
+        for (var item_idx=0; item_idx<vocab_item_names.length; item_idx++) {
+            var item_name = vocab_item_names[item_idx];
+            switch (vocab_metrics[item_name]["level"]) {
+                case "high":
+                    high_list.push(item_name.replace(/_/g, " "));
+                    break;
+                case "mid":
+                    medium_list.push(item_name.replace(/_/g, " "));
+                    break;
+                case "low":
+                    low_list.push(item_name.replace(/_/g, " "));
+                    break;
+                default:
+                    console.log(vocab_metrics[item_name])
+                    break;
+            }
+        }
+    }
+    
+    return <div className="vocab_feedback">
+        <ul>
+            {(
+                (mMaxSentences.length == 5) && 
+                (mMinSentences.length == 5) && 
+                (mMaxSentences[4] != mMinSentences[4])
+            ) &&
+                <li>You demonstrate the <span className="bold_span">best</span> vocabulary in sentence <span style={{ color: `rgb(${max_color[0]}, ${max_color[1]}, ${max_color[2]})`}}>{mMaxSentences[4]}</span>, while the <span className="bold_span">poorest</span> in  <span style={{ color: `rgb(${min_color[0]}, ${min_color[1]}, ${min_color[2]})`}}>{mMinSentences[4]}</span></li>
+            }
+                {/* <li>You demonstrate the <span className="bold_span">best</span> vocabulary in sentence <span className="best_sentence">{mMaxSentences[4]}</span>, while the <span className="bold_span">poorest</span> in  <span className="worst_sentence">{mMinSentences[4]}</span></li>
+            } */}
+
+            {(high_list.length > 0) && 
+                <li>You demonstrate a <span className="bold_span">great</span> proficiency in {get_appended_aspects(high_list, "high_level_text")}</li>
+            }
+            {(medium_list.length > 0) && 
+                <li>You have a <span className="bold_span">moderate</span> performance in {get_appended_aspects(medium_list, "medium_level_text")}</li>
+            }
+            {(low_list.length > 0) && 
+                <li>You may <span className="bold_span">need improvement</span> in {get_appended_aspects(low_list, "low_level_text")}</li>
+            }
+        </ul>
+    </div>
+}
+
+
+function GrammarAspects({ mJson, mMaxSentences, mMinSentences, mMaxScores, mMinScores }) {
+    var high_list = [];
+    var medium_list = [];
+    var low_list = [];
+    // console.log(mMaxSentences[2]);
+    // console.log(mMinSentences[2]);
+
+    var max_color = [255, 255, 255];
+    var min_color = [255, 255, 255];
+    if (mMaxScores.length == 5 && mMinScores.length == 5) {
+        const max_color_idx = parseInt(mMaxScores[2]/100*mColors.length);
+        max_color = [...mColors[max_color_idx]]; 
+        if (max_color_idx == 5) {
+            max_color = MIDDLE_COLOR;
+        }
+        
+        const min_color_idx = parseInt(mMinScores[2]/100*mColors.length);
+        min_color = [...mColors[min_color_idx]];
+        if (min_color_idx == 5) {
+            min_color = MIDDLE_COLOR;
+        }
+    }
+
+    const get_appended_aspects = (mAspectList, mClassName) => {
+        if (mAspectList.length == 1) {
+            return <span>
+                <span className={mClassName}>{mAspectList[0]}</span>.
+            </span>;
+        }
+
+        else {
+            return <span>
+                {mAspectList.slice(0, mAspectList.length-1).map((aspect) => {
+                    return <span><span className={mClassName}>{aspect}</span>, </span>;
+                })} and <span className={mClassName}>{mAspectList[mAspectList.length-1]}</span>.
+            </span>;
+        }
+    }
+
+    if (mJson?.speech_score?.grammar?.overall_metrics) {
+        const metrics = mJson.speech_score.grammar.overall_metrics;
+        const item_names = ["length", "lexical_diversity", "grammatical_accuracy", "noun_phrase_complexity", "noun_phrase_variation", "verb_construction_variation", "adverb_modifier_variation"];
+        
+        for (var item_idx=0; item_idx<item_names.length; item_idx++) {
+            var item_name = item_names[item_idx];
+            var current_level = (item_idx<3)? metrics[item_name]["level"] : metrics["grammatical_range"][item_name]["level"];
+            switch (current_level) {
+                case "high":
+                    high_list.push(item_name.replace(/_/g, " "));
+                    break;
+                case "mid":
+                    medium_list.push(item_name.replace(/_/g, " "));
+                    break;
+                case "low":
+                    low_list.push(item_name.replace(/_/g, " "));
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+    
+    return <div className="grammar_feedback">
+        <ul>
+            {(
+                (mMaxSentences.length == 5) && 
+                (mMinSentences.length == 5) && 
+                (mMaxSentences[2] != mMinSentences[2])
+            ) &&
+                <li>You demonstrate the <span className="bold_span">best</span> grammar in sentence <span style={{ color: `rgb(${max_color[0]}, ${max_color[1]}, ${max_color[2]})`}}>{mMaxSentences[2]}</span>, while the <span className="bold_span">poorest</span> in  <span style={{ color: `rgb(${min_color[0]}, ${min_color[1]}, ${min_color[2]})`}}>{mMinSentences[2]}</span></li>
+            }
+
+            {(high_list.length > 0) && 
+                <li>You demonstrate a <span className="bold_span">great</span> proficiency in {get_appended_aspects(high_list, "high_level_text")}</li>
+            }
+            {(medium_list.length > 0) && 
+                <li>You have a <span className="bold_span">moderate</span> performance in {get_appended_aspects(medium_list, "medium_level_text")}</li>
+            }
+            {(low_list.length > 0) && 
+                <li>You may <span className="bold_span">need improvement</span> in {get_appended_aspects(low_list, "low_level_text")}</li>
+            }
+        </ul>
+    </div>
+}
+
+
+function IntonationSpan({ into, idx }) {
+    // const FALL_COLOR = [75, 164, 253];
+    // const RISE_COLOR = [0, 206, 209];
+    // const FLAT_COLOR = [230, 230, 250];
+    
+    const FALL_COLOR = [109, 178, 247];
+    const RISE_COLOR = [242, 196, 32];
+    const FLAT_COLOR = [171, 171, 186];
+    
+    var cur_color = [255, 255, 255];
+    
+    var result = "";
+    switch (into) {
+        case "FALL":
+            result = "↓";
+            cur_color = FALL_COLOR;
+            break;
+
+        case "RISE":
+            result = "↑";
+            cur_color = RISE_COLOR;
+            break;
+
+        case "FLAT":
+            result = "-";
+            cur_color = FLAT_COLOR;
+            break;
+
+        default:
+            break;
+    }
+        
+    // if (result.length > 0) {
+    //     result = " " + result;
+    // }
+    
+    return <span style={{ color: `rgb(${cur_color[0]}, ${cur_color[1]}, ${cur_color[2]})`}}>{result}</span>;
 }
 
 function rgbToHex(r, g, b) {
@@ -88,7 +324,7 @@ function WordSpan({ show_speed, show_stress, show_pause, show_subscore, index, w
     if (show_subscore > 0) {
         const score_list = score_lists[show_subscore - 1];
         const color_idx = parseInt(score_list[index]/100 * mColors.length);
-        console.log("subscore", score_list[index])
+        // console.log("subscore", score_list[index])
         // mColor[0] *= (Math.pow(score_list[index], 2)/10000);
         // mColor[1] *= (Math.pow(score_list[index], 2)/10000);
         // mColor[2] *= (Math.pow(score_list[index], 2)/10000);
@@ -97,7 +333,7 @@ function WordSpan({ show_speed, show_stress, show_pause, show_subscore, index, w
             // (mColors[0][i] * score_list[index]/100) + (mColors[1][i] * (1-score_list[index]/100));
         }
         mColor[3] = 0.6;
-        console.log(mColor);
+        // console.log(mColor);
     }
     
     var mSpan = (
@@ -187,9 +423,11 @@ function PartFeedback({ part, reuslt_json }) {
         var word_sd_pitches = [];
         console.log('enter!!');
 
+        var pause_count_list = [0, 0, 0];
+
         if (!mJson?.speech_score?.word_score_list) {
             console.log("no score!!!");
-            return [pause_list, pitch_list, extent_list];
+            return [pause_list, pitch_list, extent_list, "", 0, [0, 0, 0]];
         } 
 
         for(var word_idx = 0; word_idx < mJson["speech_score"]["word_score_list"].length; word_idx++) {
@@ -197,6 +435,7 @@ function PartFeedback({ part, reuslt_json }) {
             var extents = [];
             const syllables = mJson["speech_score"]["word_score_list"][word_idx]["syllable_score_list"];
             const syllable_count = syllables.length;
+
 
 
             for (var syllable of syllables) {
@@ -237,13 +476,16 @@ function PartFeedback({ part, reuslt_json }) {
                 if (interval >= pause_bar1) {
                     if (interval < pause_bar2) {
                         interval_type = "brief_pause"; // brief pause
+                        pause_count_list[0] += 1;
                     }
                     else {
                         if (interval < pause_bar3) {
                             interval_type = "master_pause"; // master pause
+                            pause_count_list[1] += 1;
                         }
                         else {
                             interval_type = "long_pause"; // long pause
+                            pause_count_list[2] += 1;
                         }
                     }
                 }
@@ -300,13 +542,61 @@ function PartFeedback({ part, reuslt_json }) {
                 pitch_list.push("no_stress");
             }
         }
+
+        const current_segment_list = mJson?.speech_score?.fluency?.segment_metrics_list;
+        var current_word_idx = 0;
+        var max_sd = 0;
+        var max_start = 0;
+        var max_end = 0;
+        var pitch_sd_mean = 0;
+        for (var segment_idx=0; segment_idx<current_segment_list.length; segment_idx ++) {
+            var current_word_count = current_segment_list[segment_idx]["word_count"]; 
+            var current_segment_sd = word_sd_pitches.slice(current_word_idx, current_word_idx+current_word_count);
+            
+            var current_segment_sd_mean = current_segment_sd.reduce((accumulator, currentValue) => accumulator + currentValue);
+            pitch_sd_mean += current_segment_sd_mean;
+            current_segment_sd_mean /= current_word_count;
+            
+            if (current_segment_sd_mean > max_sd) {
+                max_sd = current_segment_sd_mean;
+                max_start = current_word_idx;
+                max_end = current_word_idx + current_word_count;
+            }
+            current_word_idx += current_word_count;
+        }
+        if (word_sd_pitches.length > 0) {
+            pitch_sd_mean /= word_sd_pitches.length;
+        }
+         
+
+        var max_sd_sentence = "\"";
+        console.log("MAX START", max_start);
+        console.log("MAX END", max_end);
+        if (max_start < max_end) {
+            var max_sd_words = mJson["speech_score"]["word_score_list"].slice(max_start, max_end);
+            for (var sd_word_idx=0; sd_word_idx<max_sd_words.length; sd_word_idx ++) {
+                console.log("word", max_sd_words[sd_word_idx].word)
+                max_sd_sentence += (((sd_word_idx > 0)? " " : "") + max_sd_words[sd_word_idx].word);
+                // if (max_sd_words[sd_word_idx].ending_punctuation) {
+                //     max_sd_sentence += max_sd_words[sd_word_idx].ending_punctuation;
+                // }
+            }
+        }
+        max_sd_sentence += "\"";
+
+
         
-        return [pause_list, pitch_list, extent_list];
+        return [pause_list, pitch_list, extent_list, max_sd_sentence, pitch_sd_mean, pause_count_list];
     };    
     const list_results = get_voicing_list(response_json);
     pauses_type_list = list_results[0];
     pitches_type_list = list_results[1];
     extents_type_list = list_results[2];
+    stress_sentence = list_results[3];
+    var pitch_sd_mean = list_results[4];
+    pitch_vary_sign = (pitch_sd_mean > stress_bar/2.5)? "changable" : "stable";
+
+    pause_count = list_results[5];
 
     const get_segment_list = (mJson) => {
         var word_segment_pronunciation_scores = [];
@@ -322,15 +612,53 @@ function PartFeedback({ part, reuslt_json }) {
                 word_segment_fluency_scores,
                 word_segment_grammar_scores,
                 word_segment_coherence_scores,
-                word_segment_vocab_scores
+                word_segment_vocab_scores,
+                ["", "", "", "", ""],
+                ["", "", "", "", ""],
+                [],
+                []
             ];
         } 
-
+        
+        // var speech_rate = [];
+        // var word_count = [];
         // console.log("mJson.speech_score.fluency.segment_metrics_list", mJson.speech_score.fluency.segment_metrics_list);
+        var max_scores = [0, 0, 0, 0, 0]; // pronunciation, fluency, grammar, coherence, vocab
+        var min_scores = [100, 100, 100, 100, 100];
+        var max_segment_two_idx = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]];
+        var min_segment_two_idx = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]];
+        
+        const update_max_min = (current_scores, two_idx) => {
+            for (var score_idx=0; score_idx<current_scores.length; score_idx++) {
+                if (current_scores[score_idx] > max_scores[score_idx]) {
+                    max_scores[score_idx] = current_scores[score_idx];
+                    max_segment_two_idx[score_idx] = two_idx;
+                }
+
+                if (current_scores[score_idx] < min_scores[score_idx]) {
+                    min_scores[score_idx] = current_scores[score_idx];
+                    min_segment_two_idx[score_idx] = two_idx;
+                }
+
+            }
+        };
+
         for (var segment_metrics of mJson.speech_score.fluency.segment_metrics_list) {
             // const segment_metrics = 
             // console.log("segment", segment_metrics);
             var segment = segment_metrics["segment"];
+            // speech_rate.push(segment_metrics["speech_rate"]);
+            // word_count.push(segment_metrics["word_count"]);
+            update_max_min(
+                [
+                    segment_metrics.speechace_score.pronunciation, 
+                    segment_metrics.speechace_score.fluency, 
+                    segment_metrics.speechace_score.grammar, 
+                    segment_metrics.speechace_score.coherence, 
+                    segment_metrics.speechace_score.vocab
+                ], 
+                [segment[0], segment[1]]
+            );
             for (var word_id=0; word_id<segment[1] - segment[0]; word_id ++) {
                 word_segment_pronunciation_scores.push(segment_metrics.speechace_score.pronunciation);
                 word_segment_fluency_scores.push(segment_metrics.speechace_score.fluency);
@@ -340,15 +668,73 @@ function PartFeedback({ part, reuslt_json }) {
             }
         }
 
+        var max_sentences = ["", "", "", "", ""];
+        var min_sentences = ["", "", "", "", ""];
+        const word_list = mJson.speech_score?.word_score_list;
+        
+        for (var score_idx=0; score_idx<max_segment_two_idx.length; score_idx++) {
+            var current_sentence = "\"";
+            for (var word_idx=max_segment_two_idx[score_idx][0]; word_idx<max_segment_two_idx[score_idx][1]; word_idx ++) {
+                current_sentence += (((word_idx > max_segment_two_idx[score_idx][0])? " " : "") + word_list[word_idx].word);
+                
+                if (word_idx != (max_segment_two_idx[score_idx][1]-1) && word_list[word_idx].ending_punctuation) {
+                    current_sentence += word_list[word_idx].ending_punctuation;
+                }
+            }
+            current_sentence += "\"";
+            max_sentences[score_idx] = current_sentence;
+        }
+        
+        for (var score_idx=0; score_idx<min_segment_two_idx.length; score_idx++) {
+            var current_sentence = "\"";
+            for (var word_idx=min_segment_two_idx[score_idx][0]; word_idx<min_segment_two_idx[score_idx][1]; word_idx ++) {
+                current_sentence += (((word_idx > min_segment_two_idx[score_idx][0])? " " : "") + word_list[word_idx].word);
+                
+                if (word_idx != (min_segment_two_idx[score_idx][1]-1) && word_list[word_idx].ending_punctuation) {
+                    current_sentence += word_list[word_idx].ending_punctuation;
+                }
+            }
+            current_sentence += "\"";
+            min_sentences[score_idx] = current_sentence;
+        }
+        
+        // var speed_rate_mean = 0;
+        // if (speech_rate.length > 0) {            
+        //     for (var segment_idx=0; segment_idx<speech_rate.length; segment_idx ++) {
+        //         speed_rate_mean += (speech_rate[segment_idx] * word_count[segment_idx]);
+        //     }
+        //     speed_rate_mean /= speech_rate.length;
+        // }
+
         return [
             word_segment_pronunciation_scores,
             word_segment_fluency_scores,
             word_segment_grammar_scores,
             word_segment_coherence_scores,
-            word_segment_vocab_scores
+            word_segment_vocab_scores,
+            max_sentences,
+            min_sentences,
+            max_scores,
+            min_scores
         ];
     };
-    score_lists = get_segment_list(response_json);
+    // segment_results = get_segment_list(response_json);
+    // score_lists = segment_results[0];
+    // speed_rate_average = segment_results[1];
+    
+    all_segment_results = get_segment_list(response_json);
+    console.log(all_segment_results);
+    score_lists = all_segment_results.slice(0, 5);
+    speed_rate_average = response_json?.speech_score?.fluency?.overall_metrics?.speech_rate;
+    speed_rate_sign = (speed_rate_average > SEGMENT_RATE_FAST)? "fast" : ((speed_rate_average < SEGMENT_RATE_SLOW)? "slow" : "moderate");
+
+    max_score_sentences = all_segment_results[5];
+    min_score_sentences = all_segment_results[6];
+
+    max_sentence_scores = all_segment_results[7];
+    min_sentence_scores = all_segment_results[8];
+    // console.log("MAX SCORES", max_score_sentences);
+    // console.log("MIN SCORES", min_score_sentences);
     // pronunciation_score_list = score_lists[0];
     // fluency_score_list = score_lists[1];
     // grammar_score_list = score_lists[2];
@@ -448,6 +834,7 @@ function PartFeedback({ part, reuslt_json }) {
                 coherence_scores, coherence_names];
     };
 
+
     const list_results_2 = get_dimension_list(response_json);
     const grammar_scores_list = list_results_2[0];
     const grammar_names_list = list_results_2[1];
@@ -455,6 +842,78 @@ function PartFeedback({ part, reuslt_json }) {
     const vocab_names_list = list_results_2[3];
     const coherence_scores_list = list_results_2[4];
     const coherence_names_list = list_results_2[5];
+
+
+
+    
+    // const get_vocab_report = (mJson) => {
+    //     if (mJson?.speech_score?.vocab?.overall_metrics) {
+    //         const vocab_metrics = mJson.speech_score.vocab.overall_metrics;
+    //         const vocab_item_names = ["lexical_diversity", "word_sophistication", "word_specificity", "academic_language_use", "collocation_commonality", "idiomaticity"];
+            
+    //         var high_list = [];
+    //         var medium_list = [];
+    //         var low_list = [];
+
+    //         for (var item_idx=0; item_idx<vocab_item_names.length; item_idx++) {
+    //             var item_name = vocab_item_names[item_idx];
+    //             switch (vocab_metrics[item_name]["level"]) {
+    //                 case "high":
+    //                     high_list.push(item_name.replace(/_/g, " "));
+    //                     break;
+    //                 case "mid":
+    //                     medium_list.push(item_name.replace(/_/g, " "));
+    //                     break;
+    //                 case "low":
+    //                     low_list.push(item_name.replace(/_/g, " "));
+    //                     break;
+    //                 default:
+    //                     console.log(vocab_metrics[item_name])
+    //                     break;
+    //             }
+    //         }
+
+    //         const get_appended_aspects = (mAspectList) => {
+    //             var output = "";
+    //             if (mAspectList.length == 1) {
+    //                 output += mAspectList[0];
+    //             }
+    //             else {
+    //                 for (var aspect_idx=0; aspect_idx<(mAspectList.length-1); aspect_idx ++) {
+    //                     output += mAspectList[aspect_idx];
+    //                     output += ", ";
+    //                 }
+    //                 output += "and ";
+    //                 output += mAspectList[mAspectList.length - 1];
+    //             }
+    //             output += ". ";
+    //             return output;
+    //         }
+
+    //         var result = "";
+    //         if (high_list.length > 0) {
+    //             result += "You demonstrate a great proficiency in ";
+    //             result += get_appended_aspects(high_list);
+    //         }
+
+    //         if (medium_list.length > 0) {
+    //             result += "You have a moderate performance in ";
+    //             result += get_appended_aspects(medium_list);
+    //         }
+            
+    //         if (low_list.length > 0) {
+    //             result += "You may need improvement in ";
+    //             result += get_appended_aspects(low_list);
+    //         }
+
+    //         return result;            
+    //     }
+        
+    //     return "";
+
+    // };
+
+    // mVocabReport = get_vocab_report(response_json);
 
 
 
@@ -531,7 +990,7 @@ function PartFeedback({ part, reuslt_json }) {
 
     const spanElements = mColors.map((mColor, index) => {
         return <span style={{ backgroundColor: `rgba(${mColor[0]}, ${mColor[1]}, ${mColor[2]}, 0.6)`, color: "transparent" }}>___</span>; //{parseInt(index/mColors.length*100)}
-    })
+    });
     
 
     useEffect(() => {
@@ -660,10 +1119,40 @@ function PartFeedback({ part, reuslt_json }) {
                         response_json["speech_score"]["word_score_list"].map((item, index) => {
                             var syllable_marks = new Array(item.phone_score_list.length).fill(0);
                             var syllables = new Array(item.phone_score_list.length).fill('');
+                            var intonations = new Array(item.phone_score_list.length).fill([]);
+                            
                             var last_pos = 0;
-                            for(var syllable of item.syllable_score_list) {
+                            // const get_intonation = (mIntonation) => {
+                            //     var result = "";
+                            //     for (var into_idx=0; into_idx<mIntonation.length; into_idx ++) {
+                            //         switch (mIntonation[into_idx]) {
+                            //             case "FALL":
+                            //                 result += "↓";
+                            //                 break;
+                            //             case "RISE":
+                            //                 result += "↑";
+                            //                 break;
+                            //             case "FLAT":
+                            //                 result += "-";
+                            //                 break;
+                            //             default:
+                            //                 break;
+                            //         }
+                                    
+                            //     }
+                            //     if (result.length > 0) {
+                            //         result = " " + result;
+                            //     }
+                            //     return result;
+                            // };
+                            // for(var syllable of item.syllable_score_list) {
+                            for (var syllable_idx=0; syllable_idx<item.syllable_score_list.length; syllable_idx++) {
+                                var syllable = item.syllable_score_list[syllable_idx];
                                 syllable_marks[last_pos] = syllable.phone_count;
                                 syllables[last_pos] = syllable.letters;
+                                intonations[last_pos] = response_json?.speech_score?.word_intonation_list[index].syllable_intonation_list[syllable_idx];
+                                // get_intonation(response_json?.speech_score?.word_intonation_list[index].syllable_intonation_list[syllable_idx]);
+                                // console.log(intonations);
                                 last_pos += syllable.phone_count;
                             }
                             
@@ -697,6 +1186,7 @@ function PartFeedback({ part, reuslt_json }) {
                                             <table className="phone_tab">
                                                 <thead>
                                                     <tr>
+                                                        {/* <th>Intonation</th> */}
                                                         <th>Syllable</th>
                                                         <th>Phone</th>
                                                         <th>Result</th>
@@ -705,7 +1195,8 @@ function PartFeedback({ part, reuslt_json }) {
                                                 <tbody>
                                                     {item.phone_score_list.map((phone, idx) => (
                                                         <tr>
-                                                            {(syllable_marks[idx] > 0) && (<td rowSpan={syllable_marks[idx]}>{syllables[idx]}</td>)}
+                                                            {/* {(syllable_marks[idx] > 0) && (<td rowSpan={syllable_marks[idx]}>{intonations[idx]}</td>)} */}
+                                                            {(syllable_marks[idx] > 0) && (<td rowSpan={syllable_marks[idx]}>{syllables[idx]}{intonations[idx].map((into, into_idx) => {return <IntonationSpan into={into} idx={into_idx}/>})}</td>)}
                                                             <td className={(phone.sound_most_like === phone.phone)? "correct" : "incorrect"}>{arpabet[phone.phone] || phone.phone}</td>
                                                             <td className={(phone.sound_most_like === phone.phone)? "correct" : "incorrect"}>{(phone.sound_most_like)? ((phone.sound_most_like === phone.phone)? 'Good' : arpabet[phone.sound_most_like]) : '[missing]'}</td>
                                                         </tr>
@@ -752,13 +1243,34 @@ function PartFeedback({ part, reuslt_json }) {
                     )
                     }
                 </div>
-                
+
                 
                 {(show_subscore>0) && <div className="legend">
                     <span className="legend_num">0</span>
                     {spanElements}
                     <span className="legend_num">100</span>
                 </div>}
+
+                <p className="report_title">Voicing report:</p>
+                <ul>
+                    <li className="pace_feedback">Your overall <span className="bold_span">pace</span> is <span className="speed_text">{speed_rate_sign}</span>, with <span className="speed_number">{parseInt(response_json?.speech_score?.fluency?.overall_metrics?.word_correct_per_minute)}</span> correct words count per minute.</li>
+
+                    <li className="speed_feedback">Your <span className="bold_span">pitch</span> is <span className="stress_label">{pitch_vary_sign}</span>, presenting the most varied tone in sentence <span className="stress_sentence">{stress_sentence}</span>.</li>
+                    
+                    {((pause_count[0] == 0) && (pause_count[1] == 0) && (pause_count[2] == 0)) &&
+                        <li className="pause_feedback">You did not make any <span className="bold_span">brief</span>, <span className="bold_span">master</span>, or <span className="bold_span">long</span> pause. You may learn to modulate your speech by making approapriate pauses.</li>
+                    }
+                    {((pause_count[0] > 0) || (pause_count[1] > 0) || (pause_count[2] > 0)) &&
+                        <li className="pause_feedback">You made <span className="brief_pause_text">{pause_count[0]}</span> <span className="bold_span">brief</span> {(pause_count[0]>1)? "pauses":"pause"}, <span className="master_pause_text">{pause_count[1]}</span> <span className="bold_span">master</span> {(pause_count[1]>1)? "pauses":"pause"}, and <span className="long_pause_text">{pause_count[2]}</span> <span className="bold_span">long</span> {(pause_count[2]>1)? "pauses":"pause"}.</li>
+                    }
+                </ul>
+                
+                <p className="report_title">Grammar report:</p>
+                <GrammarAspects mJson={response_json} mMaxSentences={max_score_sentences} mMinSentences={min_score_sentences} mMaxScores={max_sentence_scores} mMinScores={min_sentence_scores}/>
+
+                
+                <p className="report_title">Vocabulary report:</p>
+                <VocabularyAspects mJson={response_json} mMaxSentences={max_score_sentences} mMinSentences={min_score_sentences} mMaxScores={max_sentence_scores} mMinScores={min_sentence_scores}/>
 
                 
                 {(show_pause) && <div className="pause_annotation">
