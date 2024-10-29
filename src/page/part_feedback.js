@@ -89,35 +89,56 @@ const mVolColors = [
 // red-blue: [[21,3,251], [42,72,235], [52,116,235], [24,149,255], [1,184,255], [94,196,244], [168,218,242], [255,253,177], [255,228,63], [255,189,15], [255,144,0], [255,89,0], [255,5,0], [214,0,0]];
 
 
-function PauseFlexible() {
-    var comment = "";
-    var result = true;
-    if (pause_count[2] > 0) {
-        if ((pause_at_comma[2] + pause_at_period[2]) > 0.9*pause_count[2] && pause_at_period[2] > 0.5*pause_count[2]) {
-            return [result, comment];
-        }
-        else {
-            result = false;
-            comment = "It is recommended to make long pause only at the end of a sentence.";
+function PauseFlexible(mJson) {
+    var sentence_count = 0;
+    var word_count = 0;
+    if (mJson?.speech_score?.fluency?.segment_metrics_list) {
+        sentence_count = mJson?.speech_score?.fluency?.segment_metrics_list.length;
+        word_count = mJson?.speech_score?.transcript.length;
+    }
+    console.log("There are", sentence_count, "sentence(s).");
+
+    var jamming_detect = false;
+    var pasuing_valid = false;
+    var pausing_detect = false;
+
+    if (sentence_count > 2 && word_count > 100 && (pause_count[1] + pause_count[2]) > 0 ) {
+        // the speech has sufficient length to asses pausing
+        // else the speech is too short to assess pausing -> invalid
+        pasuing_valid = true;
+
+        if (pause_count[2] > 0) {
+            if ((pause_at_comma[2] + pause_at_period[2]) > 0.8*pause_count[2] && pause_at_period[2] > 0.5*pause_count[2]) {
+                // have made (long) pauses correctly -> sufficient
+                pausing_detect = true;
+            }
+        }    
+        if (pause_count[1] > 0) {
+            if ((pause_at_comma[1] + pause_at_period[1]) > 0.6*pause_count[1]) {
+                // have made (master) pauses correctly -> sufficient
+                pausing_detect = true;
+            }
         }
     }
 
-    if (pause_count[1] > 0) {
-        if ((pause_at_comma[1] + pause_at_period[1]) > 0.6*pause_count[1]) {
-            return [result, comment];
-        }
-        else {
-            result = false;
-            comment = "It is recommended to make long pause only at the end of a sentence.";
-        }
+    const jam_count = (pause_index) => {
+        return pause_count[pause_index] - pause_at_comma[pause_index] - pause_at_period[pause_index];
     }
 
-    if (pause_count[0] + pause_count[1] + pause_count[2] < 2) {
-        return [false, "It is recommended to modulate your speech by making appropriate pauses."]
+    if (jam_count(0) > sentence_count) {
+        // have (brief) jams (pauses not at comma/period) more than once in every sentence averagely
+        jamming_detect = true;
+    }
+    if (jam_count(1) > sentence_count/4) {
+        // have (master) jams (pauses not at comma/period) more than once in every four sentences averagely
+        jamming_detect = true;
+    }
+    if (jam_count(2) > sentence_count/8) {
+        // have (long) jams (pauses not at comma/period) more than once in every eight sentences averagely
+        jamming_detect = true;
     }
 
-
-    return [result, comment];
+    return [jamming_detect, pasuing_valid, pausing_detect];
 }
 
 
@@ -529,12 +550,14 @@ function PartFeedback({ part, reuslt_json }) {
         
             
         const vocab_terms = ["lexical_diversity", "word_sophistication", "word_specificity", "collocation_commonality", "idiomaticity"];
+        const vocab_terms_written = ["the vocabulary variety", "the sophistication of words", "the specificity of words", "collocations", "idiomatic expressions"];
         var vocab_diverse_count = 0;
         var vocab_diverse_term_list = [];
-        for (var vocab_term of vocab_terms) {
+        for (var vocab_term_id=0; vocab_term_id<vocab_terms.length; vocab_term_id++) {
+            var vocab_term = vocab_terms[vocab_term_id];
             if (mJson.speech_score.vocab.overall_metrics[vocab_term]["level"] == "low") {
                 vocab_diverse_count += 1;
-                vocab_diverse_term_list.push(vocab_term);
+                vocab_diverse_term_list.push(vocab_terms_written[vocab_term_id]);
             }
         }
         const vocab_diverse = (vocab_diverse_count < 3);
@@ -749,9 +772,12 @@ function PartFeedback({ part, reuslt_json }) {
     console.log("pause_count", pause_count);
     console.log("pause_at_comma", pause_at_comma);
     console.log("pause_at_period", pause_at_period);
-    const pause_check_results =  PauseFlexible();
-    const pause_flexible_sign = pause_check_results[0];
-    const pause_comment = pause_check_results[1];
+    const pause_check_results =  PauseFlexible(response_json);
+    const jam_detect_sign = pause_check_results[0];
+    const pausing_valid_sign = pause_check_results[1];
+    const pausing_flexible_sign = pause_check_results[2];
+    // const pause_flexible_sign = pause_check_results[0];
+    // const pause_comment = pause_check_results[1];
     pause_examples = list_results[9];
 
     const negotiate_flexible_sign = list_results[10];
@@ -1497,11 +1523,15 @@ function PartFeedback({ part, reuslt_json }) {
                     
 
                     {/* pause */}
-                    {(pause_flexible_sign)?
-                        <li className="pause_feedback">You utilized <span className="bold_span">pauses</span> <span className="pause_span">flexibly</span>, for example before {pause_examples.map((example, ex_idx) => {
-                            return (ex_idx == pause_examples.length-1)? <span className="pause_example">{(pause_examples.length>1) && "and "}"{example}"</span>:<span className="pause_example">"{example}", </span>
-                        })}, seamlessly bringing together listeners from different backgrounds.</li> :
-                        <li className="pause_feedback">You utilized <span className="bold_span">pauses</span> <span className="pause_span">inflexibly</span>. {pause_comment}</li>
+                    {pausing_valid_sign &&
+                        (pausing_flexible_sign)?
+                            <li className="pause_feedback">You utilized <span className="bold_span">pausing</span> <span className="pause_span">flexibly</span>, for example before {pause_examples.map((example, ex_idx) => {
+                                return (ex_idx == pause_examples.length-1)? <span className="pause_example">{(pause_examples.length>1) && "and "}"{example}"</span>:<span className="pause_example">"{example}", </span>
+                            })}, seamlessly bringing together listeners from different backgrounds.</li> :
+                            <li className="pause_feedback">You utilized <span className="bold_span">pausing</span> <span className="pause_span">inflexibly</span>. You may want to modulate your speech by making pauses at the end of a complete chunk or at points you would like to emphasize.</li>
+                    }
+                    {jam_detect_sign &&
+                        <li className="pause_feedback">Your speech included systematic <span className="bold_span">pauses</span> that occurred <span className="jam_span">unintentionally</span>.</li>
                     }
                     
                     {/* {((pause_count[0] == 0) && (pause_count[1] == 0) && (pause_count[2] == 0)) &&
@@ -1519,7 +1549,7 @@ function PartFeedback({ part, reuslt_json }) {
                 <ul>
                     {(negotiate_flexible_sign)?
                         <li>You <span className="grammar_span">skillfully</span> drew from diverse <span className="bold_span">grammatical practices</span> to negotiate meaning <span className="grammar_span">flexibly</span>.</li> :
-                        <li>You showed <span className="grammar_span">only some</span> diverse <span className="bold_span">grammatical practices</span> and negotiated meaning <span className="grammar_span">infelxibly</span>.</li>
+                        <li>You showed <span className="grammar_span">only some</span> diverse <span className="bold_span">grammatical practices</span> and negotiated meaning <span className="grammar_span">inflexibly</span>.</li>
                     }
                 </ul>
                 {/* <GrammarAspects mJson={response_json} mMaxSentences={max_score_sentences} mMinSentences={min_score_sentences} mMaxScores={max_sentence_scores} mMinScores={min_sentence_scores}/> */}
@@ -1529,7 +1559,7 @@ function PartFeedback({ part, reuslt_json }) {
                 <ul>
                     {(vocab_diverse_sign)?
                         <li>You demonstrated skills in <span className="vocab_span">creatively adapting</span> your <span className="bold_span">lexis</span> for listeners globally. Varied choices highlighted ideas respectfully and built cooperation across communities.</li> :
-                        <li>You demonstrated <span className="vocab_span">only few skills</span> in adapting your <span className="bold_span">lexis</span> for listeners globally. You may pay attention to {vocab_diverse_terms.map((diverse_term, diverse_term_idx) => {
+                        <li>You might need to <span className="vocab_span">further adapt</span> your <span className="bold_span">word choices</span> for a global audience. You may pay attention to {vocab_diverse_terms.map((diverse_term, diverse_term_idx) => {
                             return (<span className="vocab_example">{(vocab_diverse_terms.length>1 && diverse_term_idx==(vocab_diverse_terms.length-1)) && "and "}{diverse_term.replace("_", " ")}{(diverse_term_idx!=(vocab_diverse_terms.length-1)) && ", "}</span>);
                         })} when improving your vocabulary diversity.</li>
                     }
